@@ -8,8 +8,8 @@ using namespace cv;
  
 
 Mat g_srcImage, g_dstImage;//原始图和效果图
-int g_nTrackbarNumer = 0;//0表示腐蚀erode, 1表示膨胀dilate
-int g_nStructElementSize = 3; //结构元素(内核矩阵)的尺寸
+int g_nTrackbarNumer = 3;//0表示腐蚀erode, 1表示膨胀dilate
+int g_nStructElementSize = 20; //结构元素(内核矩阵)的尺寸
  
 void Process();//膨胀和腐蚀的处理函数
 void on_TrackbarNumChange(int, void *);//回调函数

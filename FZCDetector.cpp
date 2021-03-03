@@ -68,14 +68,14 @@ int main( int argc, char** argv )
     {
         Vec4i l = lines[i];
         //根据斜率留下属于输电线的直线
-        // double k;
-        // if(l[0]==l[2]) k = 0.0; 
-        // else k = (l[1]-l[3])/(l[0]-l[2]);
+        double k;
+        if(l[0]==l[2]) k = 0.0; 
+        else k = (l[1]-l[3])/(l[0]-l[2]);
         
         // if(abs(k) < 7.0 || abs(k) > 8.5){
         //     continue;
         // } 
-        // cout << k << endl;
+        cout << k << endl;
 
         line( src, Point(l[0]+1200, l[1]), Point(l[2]+1200, l[3]), Scalar(0,0,255), 1, CV_AA);
     }
