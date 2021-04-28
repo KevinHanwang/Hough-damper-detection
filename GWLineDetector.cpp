@@ -4,6 +4,7 @@
 #include <math.h>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 using namespace std;
 using namespace cv;
@@ -14,15 +15,17 @@ int height, width;
 Mat srcImage, midImage, grayImage, cutImage, cutImage2, dst;
 
 // GW0426 left : close 8
-int g_nStructElementSize = 10; //形态学闭运算结构元素(内核矩阵)的尺寸
+int g_nStructElementSize = 4; //形态学闭运算结构元素(内核矩阵)的尺寸
 int g_nthreshold=30;
 int g_merge = 50;
-int g_cannyLowThreshold=4;
+int g_cannyLowThreshold= 40;
+int b_value = 100;
+int c_p = 20;
 
 //H、S通道
 int channels[] = { 0, 1 };
 int histSize[] = { 30, 32 };
-float HRanges[] = { 0, 180 };
+float HRanges[] = { 0, 180 };   
 float SRanges[] = { 0, 256 };
 const float *ranges[] = { HRanges, SRanges };
 
@@ -45,8 +48,12 @@ int main(int argc, char** argv){
     height = srcImage.rows;
     width  = srcImage.cols;
 
-    vector<Point> lineOutput(4); 
+    vector<Point> lineOutput(4);
+    chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
     lineOutput = LineDetector(srcImage,dst);
+    chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
+    chrono::duration<double> time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
+    cout << "extract power line cost = " << time_used.count() << " seconds. " << endl;
     
     line(srcImage, Point(lineOutput[0].x,lineOutput[0].y),Point(lineOutput[1].x,lineOutput[1].y), Scalar(0,0,255), 2, CV_AA);
     line(srcImage, Point(lineOutput[2].x,lineOutput[2].y),Point(lineOutput[3].x,lineOutput[3].y), Scalar(0,0,255), 2, CV_AA);
@@ -68,11 +75,21 @@ vector<Point> LineDetector(Mat srcImage, Mat dst){
     // 直方图均衡化
     equalizeHist(srcImage, srcImage);
 
+    midImage = Mat::zeros(srcImage.size(), srcImage.type());
 
-    // 进行形态学开运算操作
+    for (int y = 0; y < srcImage.rows; y++)
+	{
+		for (int x = 0; x < srcImage.cols; x++)
+		{
+            double t = ((srcImage.at<uchar>(y, x) - 127) / 225.00)*c_p*0.1;
+			midImage.at<uchar>(y, x) = saturate_cast<uchar>(srcImage.at<uchar>(y, x) * 
+                    ((1.00 / (1.00 + exp(-t))) + 0.3) + b_value - 100);
+		}
+	}
+    // 进行形态学close操作
     Mat element = getStructuringElement(MORPH_RECT, Size(2*g_nStructElementSize+1,2*g_nStructElementSize+1),
         Point( g_nStructElementSize, g_nStructElementSize ));
-    morphologyEx(srcImage, midImage, MORPH_CLOSE, element);
+    morphologyEx(midImage, midImage, MORPH_CLOSE, element);
     imshow("morph_close", midImage);
 
 	//调用HoughLinesP函数
@@ -84,20 +101,20 @@ vector<Point> LineDetector(Mat srcImage, Mat dst){
     // convertScaleAbs(midImage, midImage);
     // imshow("laplacian", midImage);
 
-    Mat element1 = getStructuringElement(MORPH_RECT, Size(3,3),Point(1,1));
-    morphologyEx(midImage, midImage, MORPH_GRADIENT, element1);
-    imshow("morph_gradient", midImage);
-    morphologyEx(midImage, midImage, MORPH_ERODE, element1);
-    imshow("morph_erode", midImage);
+    // Mat element1 = getStructuringElement(MORPH_RECT, Size(3,3),Point(1,1));
+    // morphologyEx(midImage, midImage, MORPH_GRADIENT, element1);
+    // imshow("morph_gradient", midImage);
+    // morphologyEx(midImage, midImage, MORPH_ERODE, element1);
+    // imshow("morph_erode", midImage);
 
     GaussianBlur( midImage, midImage, Size(15, 15), 2, 2);
-    grayImage = midImage.clone();
 
     Canny(midImage, midImage, g_cannyLowThreshold, g_cannyLowThreshold*3, 3);
     imshow("canny", midImage);
 
     vector<Point> ROIpoints;
     ROIpoints = CalROI(dst, draw);
+
 
     // 掩膜
     Mat mask = Mat::zeros(srcImage.size(), CV_8UC1);
@@ -113,16 +130,17 @@ vector<Point> LineDetector(Mat srcImage, Mat dst){
 
     // GW0426left
     if(ROIpoints[1].x != 0 && ROIpoints[1].y != 0){
-        PointArray[0] = Point(width/10, ROIpoints[0].y - 10);
-        PointArray[1] = Point(ROIpoints[1].x + 20,  ROIpoints[0].y - 10);
-        PointArray[2] = Point(ROIpoints[1].x + 20,  ROIpoints[1].y + 10);
-        PointArray[3] = Point(width/10, ROIpoints[1].y + 10);
+        cout << "ROI found!" << endl;
+        PointArray[0] = Point(0, ROIpoints[0].y - 40);
+        PointArray[1] = Point(width/3,  ROIpoints[0].y - 10);
+        PointArray[2] = Point(width/3,  ROIpoints[1].y + 15);
+        PointArray[3] = Point(0, ROIpoints[1].y + 15);
     }
     else{
-        PointArray[0] = Point(width/10, 2*height/10);
+        PointArray[0] = Point(0, 2*height/10);
         PointArray[1] = Point(width/2, 2*height/10);
         PointArray[2] = Point(width/2, 5*height/10);
-        PointArray[3] = Point(width/10,5*height/10);
+        PointArray[3] = Point(0,5*height/10);
     }
 
     fillConvexPoly(mask,PointArray,4,Scalar(255));
@@ -140,7 +158,7 @@ vector<Point> LineDetector(Mat srcImage, Mat dst){
     for(auto it = mylines.begin(); it != mylines.end(); ++it){
         Vec4i L = *it;
         double k = (L[3]-L[1]) * 1.0 /(L[2]-L[0]);
-        cout << k << " " ;
+        // cout << k << " " ;
         if(abs(k) < 0.3){
             line(draw, Point(L(0), L(1)), Point(L(2), L(3)), Scalar(0,0,255), 5, CV_AA);
             cnt += 1;
@@ -173,7 +191,7 @@ vector<Point> LineDetector(Mat srcImage, Mat dst){
     if(slopeset.size() > 1){
         vector<int> slopes = kmeans(slopeset, 2);
         if(slopes[0] != INT_MIN) {
-            cout << "slope of two sides : " << slopes[0] << " " << slopes[1] << endl;
+            // cout << "slope of two sides : " << slopes[0] << " " << slopes[1] << endl;
             float slopeThresh = (slopes[0] + slopes[1]) / 2;
 
             for(auto it = mylines.begin(); it != mylines.end(); ++it){
@@ -307,7 +325,7 @@ vector<Point> CalROI(Mat dst,Mat src){
     res[0] = get1;
     res[1] = get2;
 
-    if(comnum>0.5){
+    if(comnum>0.6){
         Point p(0,0);
         res[1] = p;
     }
